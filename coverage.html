@@ -1,0 +1,484 @@
+
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+		<title>usecases: Go Coverage Report</title>
+		<style>
+			body {
+				background: black;
+				color: rgb(80, 80, 80);
+			}
+			body, pre, #legend span {
+				font-family: Menlo, monospace;
+				font-weight: bold;
+			}
+			#topbar {
+				background: black;
+				position: fixed;
+				top: 0; left: 0; right: 0;
+				height: 42px;
+				border-bottom: 1px solid rgb(80, 80, 80);
+			}
+			#content {
+				margin-top: 50px;
+			}
+			#nav, #legend {
+				float: left;
+				margin-left: 10px;
+			}
+			#legend {
+				margin-top: 12px;
+			}
+			#nav {
+				margin-top: 10px;
+			}
+			#legend span {
+				margin: 0 5px;
+			}
+			.cov0 { color: rgb(192, 0, 0) }
+.cov1 { color: rgb(128, 128, 128) }
+.cov2 { color: rgb(116, 140, 131) }
+.cov3 { color: rgb(104, 152, 134) }
+.cov4 { color: rgb(92, 164, 137) }
+.cov5 { color: rgb(80, 176, 140) }
+.cov6 { color: rgb(68, 188, 143) }
+.cov7 { color: rgb(56, 200, 146) }
+.cov8 { color: rgb(44, 212, 149) }
+.cov9 { color: rgb(32, 224, 152) }
+.cov10 { color: rgb(20, 236, 155) }
+
+		</style>
+	</head>
+	<body>
+		<div id="topbar">
+			<div id="nav">
+				<select id="files">
+				
+				<option value="file0">github.com/wikimedia/internal/application/usecases/wikimedia_usecase.go (87.0%)</option>
+				
+				<option value="file1">github.com/wikimedia/internal/infrastructure/adapters/api/http/handlers/api.go (87.1%)</option>
+				
+				<option value="file2">github.com/wikimedia/internal/infrastructure/adapters/api/http/middlewares/middlewares.go (100.0%)</option>
+				
+				<option value="file3">github.com/wikimedia/internal/infrastructure/adapters/logger/zaplog.go (66.7%)</option>
+				
+				<option value="file4">github.com/wikimedia/internal/infrastructure/adapters/parsers/wikimedia/response_parser.go (100.0%)</option>
+				
+				<option value="file5">github.com/wikimedia/internal/infrastructure/adapters/wikimedia/http/wikimedia.go (83.3%)</option>
+				
+				</select>
+			</div>
+			<div id="legend">
+				<span>not tracked</span>
+			
+				<span class="cov0">not covered</span>
+				<span class="cov8">covered</span>
+			
+			</div>
+		</div>
+		<div id="content">
+		
+		<pre class="file" id="file0" style="display: none">package usecases
+
+import (
+        "encoding/json"
+        "fmt"
+        "strings"
+
+        "github.com/wikimedia/internal/application/ports"
+)
+
+// Response represents the response from the Wikipedia API
+type Response struct {
+        Query struct {
+                Pages []struct {
+                        Title     string
+                        Missing   bool
+                        Revisions []struct {
+                                Content string `json:"content"`
+                        } `json:"revisions"`
+                } `json:"pages"`
+        } `json:"query"`
+}
+
+type searchUseCase struct {
+        wikiMedia ports.WikiMedia
+        Parser    ports.Parser
+        Cache     ports.Cache
+        Log       ports.LogInfoFormat
+}
+
+func New(wikiMedia ports.WikiMedia, parser ports.Parser, cache ports.Cache, log ports.LogInfoFormat) ports.WikiMediaUseCase <span class="cov8" title="1">{
+        return &amp;searchUseCase{
+                wikiMedia: wikiMedia,
+                Parser:    parser,
+                Cache:     cache,
+                Log:       log,
+        }
+}</span>
+
+func (s *searchUseCase) Search(query, language string) (interface{}, error) <span class="cov8" title="1">{
+        cacheKey := s.generateCacheKey(query, language)
+        shortDescription, err := s.Cache.Get(cacheKey)
+        if string(shortDescription) == "" || err != nil </span><span class="cov8" title="1">{
+                body, searchErr := s.wikiMedia.Search(query, language)
+                if searchErr != nil </span><span class="cov8" title="1">{
+                        return nil, searchErr
+                }</span>
+
+                <span class="cov8" title="1">var response Response
+                marshalErr := json.Unmarshal(body.([]byte), &amp;response)
+                if marshalErr != nil </span><span class="cov8" title="1">{
+                        return nil, marshalErr
+                }</span>
+
+                <span class="cov8" title="1">if response.Query.Pages[0].Missing </span><span class="cov0" title="0">{
+                        return "", nil // Person not found
+                }</span>
+
+                <span class="cov8" title="1">content := response.Query.Pages[0].Revisions[0].Content
+                parsed, err := s.Parser.Parse(content)
+                if err != nil </span><span class="cov0" title="0">{
+                        return nil, err
+                }</span>
+                <span class="cov8" title="1">shortDescription = []byte(parsed)
+                // cache the response
+                err = s.Cache.Set(cacheKey, shortDescription)
+                if err != nil </span><span class="cov0" title="0">{
+                        s.Log.Warnf("Error caching response for key %s: %s", cacheKey, err)
+                }</span>
+        }
+
+        <span class="cov8" title="1">return string(shortDescription), nil</span>
+}
+
+func (s *searchUseCase) generateCacheKey(query, language string) string <span class="cov8" title="1">{
+        return fmt.Sprintf("%s-%s", language, strings.ReplaceAll(query, " ", ""))
+}</span>
+</pre>
+		
+		<pre class="file" id="file1" style="display: none">package handlers
+
+import (
+        "fmt"
+        "net/http"
+        "strings"
+
+        "github.com/gin-gonic/gin"
+        "github.com/pkg/errors"
+        "github.com/prometheus/client_golang/prometheus/promhttp"
+        "github.com/wikimedia/internal/application/ports"
+        "github.com/wikimedia/internal/domain/entities"
+        "github.com/wikimedia/internal/infrastructure/adapters/api/http/responses"
+        "github.com/wikimedia/internal/infrastructure/adapters/api/http/validator"
+        "github.com/wikimedia/internal/utils"
+)
+
+var (
+        defaultLanguage = "en"
+        notFound        = errors.New("This Person is not found in the specified language edition of Wikipedia")
+)
+
+type apiHandler struct {
+        wikiMediaUseCase ports.WikiMediaUseCase
+}
+
+func New(wikiMediaUseCase ports.WikiMediaUseCase) ports.WikiMediaHTTPHandler <span class="cov8" title="1">{
+        return &amp;apiHandler{
+                wikiMediaUseCase: wikiMediaUseCase,
+        }
+}</span>
+
+// Search
+// PingExample godoc
+// @Summary Search by full name
+// @Schemes
+// @Description Search by full name
+// @Tags search
+// @Accept json
+// @Produce json
+// @Param   keyword     query    string     true        "yoshua bengio"
+// @Param   language     query    string     false        "en"
+// @Success      200  {object}  entities.Search
+// @Failure      400,404,500  {object}  entities.Status
+// @Router /search [get]
+func (handler *apiHandler) Search(c *gin.Context) <span class="cov8" title="1">{
+        response := make(chan interface{})
+        errChan := make(chan entities.Status, 1)
+        query := getFiltersFromContext(c)
+
+        // Validate the user request
+        if err := validator.ValidateSearchRequest(query); err != nil </span><span class="cov8" title="1">{
+                errChan &lt;- entities.Status{
+                        Code:    http.StatusBadRequest,
+                        Message: err.Error(),
+                }
+        }</span>
+
+        <span class="cov8" title="1">if !validator.IsLanguageAllowed(query.Language) </span><span class="cov0" title="0">{
+                errChan &lt;- entities.Status{
+                        Code:    http.StatusBadRequest,
+                        Message: fmt.Sprintf("Only %#v are supported", validator.AllowedLanguages),
+                }
+                return
+        }</span>
+
+        <span class="cov8" title="1">go func() </span><span class="cov8" title="1">{
+                result, err := handler.wikiMediaUseCase.Search(query.Keyword, query.Language)
+                if err != nil </span><span class="cov0" title="0">{
+                        errChan &lt;- entities.Status{
+                                Code:    http.StatusBadRequest,
+                                Message: err.Error(),
+                        }
+                }</span>
+                <span class="cov8" title="1">if utils.IsEmpty(result.(string)) </span><span class="cov0" title="0">{
+                        errChan &lt;- entities.Status{
+                                Code:    http.StatusNotFound,
+                                Message: notFound.Error(),
+                        }
+                }</span>
+                <span class="cov8" title="1">response &lt;- result</span>
+        }()
+
+        <span class="cov8" title="1">select </span>{
+        case res := &lt;-response:<span class="cov8" title="1">
+                resp := res.(string)
+                c.JSON(http.StatusOK, responses.SearchResponse{
+                        Name:             strings.Title(query.Keyword),
+                        ShortDescription: resp,
+                        Language:         query.Language,
+                        Status: responses.Status{
+                                Code:    http.StatusOK,
+                                Message: "Ok",
+                        },
+                })</span>
+        case err := &lt;-errChan:<span class="cov8" title="1">
+                c.AbortWithStatusJSON(err.Code, err.Message)</span>
+        }
+}
+
+// HealthCheck
+// PingExample godoc
+// @Summary Health check endpoint
+// @Schemes
+// @Description Health check endpoint
+// @Tags health
+// @Accept json
+// @Produce json
+// @Success      200  {object}  responses.HealthResponse
+// @Router /health [get]
+func (handler *apiHandler) HealthCheck(c *gin.Context) <span class="cov8" title="1">{
+        response := make(chan bool)
+        go func() </span><span class="cov8" title="1">{
+                response &lt;- true
+        }</span>()
+        <span class="cov8" title="1">select </span>{
+        case _ = &lt;-response:<span class="cov8" title="1">
+                c.JSON(http.StatusOK, responses.HealthResponse{Status: "ok"})</span>
+        }
+}
+
+// Metrics
+// PingExample godoc
+// @Summary Prometheus Metrics
+// @Schemes
+// @Description Prometheus Metrics
+// @Tags metrics
+// @Accept json
+// @Produce json
+// @Success 200 {string} string "Prometheus metrics in plain text format"
+// @Router /metrics [get]
+func (handler *apiHandler) Metrics() gin.HandlerFunc <span class="cov8" title="1">{
+        return gin.WrapH(promhttp.Handler())
+}</span>
+
+func getFiltersFromContext(c *gin.Context) validator.SearchQuery <span class="cov8" title="1">{
+        keyword := c.Query("keyword")
+        language := c.Query("language")
+        if language == "" </span><span class="cov8" title="1">{
+                language = defaultLanguage
+        }</span>
+        <span class="cov8" title="1">return validator.SearchQuery{Keyword: keyword, Language: language}</span>
+}
+</pre>
+		
+		<pre class="file" id="file2" style="display: none">package middlewares
+
+import (
+        "github.com/gin-gonic/gin"
+        "github.com/wikimedia/internal/application/ports"
+)
+
+func ProvideMiddleware(_ ports.LogInfoFormat) *[]gin.HandlerFunc <span class="cov8" title="1">{
+        return &amp;[]gin.HandlerFunc{
+                // Add more middlewares to this list
+        }
+}</span>
+</pre>
+		
+		<pre class="file" id="file3" style="display: none">package logger
+
+import (
+        "go.uber.org/zap"
+)
+
+type Logger struct {
+        Logger *zap.SugaredLogger
+}
+
+func (l *Logger) Debug(args ...interface{}) <span class="cov8" title="1">{
+        l.Logger.Debug(args)
+}</span>
+
+func (l *Logger) Info(args ...interface{}) <span class="cov8" title="1">{
+        l.Logger.Info(args)
+}</span>
+
+func (l *Logger) Warn(args ...interface{}) <span class="cov8" title="1">{
+        l.Logger.Warn(args)
+}</span>
+
+func (l *Logger) Error(args ...interface{}) <span class="cov0" title="0">{
+        l.Logger.Error(args)
+}</span>
+
+func (l *Logger) Panic(args ...interface{}) <span class="cov8" title="1">{
+        l.Logger.Panic(args)
+}</span>
+
+func (l *Logger) Fatal(args ...interface{}) <span class="cov0" title="0">{
+        l.Logger.Fatal(args)
+}</span>
+
+func (l *Logger) Debugf(template string, args ...interface{}) <span class="cov8" title="1">{
+        l.Logger.Debugf(template, args)
+}</span>
+
+func (l *Logger) Infof(template string, args ...interface{}) <span class="cov8" title="1">{
+        l.Logger.Infof(template, args)
+}</span>
+
+func (l *Logger) Warnf(template string, args ...interface{}) <span class="cov8" title="1">{
+        l.Logger.Warnf(template, args)
+}</span>
+
+func (l *Logger) Errorf(template string, args ...interface{}) <span class="cov0" title="0">{
+        l.Logger.Errorf(template, args)
+}</span>
+
+func (l *Logger) Panicf(template string, args ...interface{}) <span class="cov8" title="1">{
+        l.Logger.Panicf(template, args)
+}</span>
+
+func (l *Logger) Fatalf(template string, args ...interface{}) <span class="cov0" title="0">{
+        l.Logger.Fatalf(template, args)
+}</span>
+</pre>
+		
+		<pre class="file" id="file4" style="display: none">package wikimedia
+
+import (
+        "regexp"
+        "strings"
+
+        "github.com/wikimedia/pkg/config"
+)
+
+type ShortDescriptionParser struct {
+        Cfg *config.Config
+}
+
+func (p *ShortDescriptionParser) Parse(content string) (string, error) <span class="cov8" title="1">{
+        var re = regexp.MustCompile(`{{[Ss]hort [Dd]escription\|(?P&lt;description&gt;[^|]+)}}`)
+        match := re.FindStringSubmatch(content)
+
+        shortDescription := ""
+        // Extract the value of the Short description field
+        if len(match) &gt; 1 </span><span class="cov8" title="1">{
+                index := re.SubexpIndex("description")
+                stringMatch := match[index]
+                shortDescription = strings.TrimSpace(stringMatch)
+        }</span>
+
+        <span class="cov8" title="1">return shortDescription, nil</span>
+}
+</pre>
+		
+		<pre class="file" id="file5" style="display: none">package http
+
+import (
+        "fmt"
+        "strings"
+
+        "github.com/go-resty/resty/v2"
+)
+
+var baseURL = "https://%s.wikipedia.org/w/api.php"
+
+type WikiMedia struct {
+        Client *resty.Client
+}
+
+func (w *WikiMedia) Search(query, language string) (interface{}, error) <span class="cov8" title="1">{
+        formattedName := strings.ReplaceAll(strings.Title(query), " ", "_")
+        params := w.generateSearchParams(formattedName)
+
+        response, err := w.sendRequest(params, language)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+
+        <span class="cov8" title="1">return response.Body(), nil</span>
+}
+func (w *WikiMedia) generateSearchParams(name string) map[string]string <span class="cov8" title="1">{
+        return map[string]string{
+                "action":        "query",
+                "prop":          "revisions",
+                "titles":        name,
+                "rvlimit":       "1",
+                "formatversion": "2",
+                "format":        "json",
+                "rvprop":        "content",
+        }
+}</span>
+func (w *WikiMedia) sendRequest(params map[string]string, language string) (*resty.Response, error) <span class="cov8" title="1">{
+        uri := fmt.Sprintf(baseURL, language)
+        response, err := w.Client.R().SetQueryParams(params).Get(uri)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+        <span class="cov8" title="1">return response, nil</span>
+}
+</pre>
+		
+		</div>
+	</body>
+	<script>
+	(function() {
+		var files = document.getElementById('files');
+		var visible;
+		files.addEventListener('change', onChange, false);
+		function select(part) {
+			if (visible)
+				visible.style.display = 'none';
+			visible = document.getElementById(part);
+			if (!visible)
+				return;
+			files.value = part;
+			visible.style.display = 'block';
+			location.hash = part;
+		}
+		function onChange() {
+			select(files.value);
+			window.scrollTo(0, 0);
+		}
+		if (location.hash != "") {
+			select(location.hash.substr(1));
+		}
+		if (!visible) {
+			select("file0");
+		}
+	})();
+	</script>
+</html>

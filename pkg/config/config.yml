@@ -1,0 +1,14 @@
+name: wikimedia-search
+logger:
+  use: zapLogger
+  environment: prod
+  loglevel: debug
+  filename: default.log
+server:
+  host: "%s:%d"
+cache:
+  use: redis
+  redis:
+    url: "%s:%d"
+    password: "%s"
+    db: 0

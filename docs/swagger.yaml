@@ -1,0 +1,87 @@
+definitions:
+  entities.Search:
+    properties:
+      language:
+        type: string
+      name:
+        type: string
+      short_description:
+        type: string
+      status:
+        $ref: '#/definitions/entities.Status'
+    type: object
+  entities.Status:
+    properties:
+      code:
+        type: integer
+      message:
+        type: string
+    type: object
+  responses.HealthResponse:
+    properties:
+      status:
+        type: string
+    type: object
+info:
+  contact: {}
+paths:
+  /health:
+    get:
+      consumes:
+      - application/json
+      description: Health check endpoint
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/responses.HealthResponse'
+      summary: Health check endpoint
+      tags:
+      - health
+  /metrics:
+    get:
+      consumes:
+      - application/json
+      description: Prometheus Metrics
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Prometheus metrics in plain text format
+          schema:
+            type: string
+      summary: Prometheus Metrics
+      tags:
+      - metrics
+  /search:
+    get:
+      consumes:
+      - application/json
+      description: Search by full name
+      parameters:
+      - description: yoshua bengio
+        in: query
+        name: keyword
+        required: true
+        type: string
+      - description: en
+        in: query
+        name: language
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/entities.Search'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/entities.Status'
+      summary: Search by full name
+      tags:
+      - search
+swagger: "2.0"

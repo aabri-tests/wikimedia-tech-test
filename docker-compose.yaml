@@ -1,0 +1,50 @@
+version: "3.8"
+
+services:
+  app:
+    container_name: Api
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: on-failure
+    ports:
+      - "8080:8080"
+    env_file:
+      - .env.prod
+    depends_on:
+      - redis
+    networks:
+      - api-network
+  redis:
+    container_name: Redis
+    image: redis:latest
+    restart: always
+    ports:
+      - "6379:6379"
+    environment:
+      REDIS_PASSWORD: pass
+    networks:
+      - api-network
+  prometheus:
+    container_name: Prometheus
+    image: prom/prometheus:latest
+    volumes:
+      - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - "9090:9090"
+    networks:
+      - api-network
+  grafana:
+    container_name: Grafana
+    image: grafana/grafana:6.1.6
+    ports:
+      - 3000:3000
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=secret
+    volumes:
+      - ./docker/grafana/provisioning:/etc/grafana/provisioning
+      - ./docker/grafana/dashboards:/var/lib/grafana/dashboards
+    networks:
+      - api-network
+networks:
+  api-network:
